@@ -13,8 +13,8 @@ A Python + Playwright automated web scraper that monitors tech company career pa
 
 1. **Install Dependencies**:
 ```bash
-conda create -n web-crawler-env python=3.11 -y
-conda activate web-crawler-env
+conda create -n webcrawler python=3.11 -y
+conda activate webcrawler
 pip install -r requirements.txt
 playwright install chromium
 ```
