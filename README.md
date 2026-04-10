@@ -1,20 +1,54 @@
-# AI Job Scraper (North America / Vancouver Focus)
+# Vancouver Tech Intern Job Crawler 🕷️
 
-A Python + Playwright automated web scraper that monitors tech company career pages for Full-stack and AI/ML positions, scores them using Gemini API, and sends alerts via Webhooks.
+An automated job monitoring system that scrapes **LinkedIn** and **Indeed** for **Software / AI / ML / Data intern and co-op positions** in Vancouver, Canada. Scores them locally using a machine learning model, and sends real-time Discord alerts.
 
-## Features
-- **Headless Browser**: Uses `playwright` with `playwright-stealth` to bypass basic anti-bot systems.
-- **API Interception First**: Intercepts JSON responses from career APIs (Lever, Greenhouse, Workday) and parses job data directly — falls back to DOM parsing only when interception yields nothing.
-- **AI Filtering (Gemini)**: Leverages Google Gemini 2.5 Flash to read job descriptions and score matching likelihood for Full-stack/AI profiles. Evaluates jobs concurrently with bounded concurrency.
-- **Webhook Alerts**: Sends notifications to Discord or Telegram for high-matching recent jobs, with rate limiting to avoid API throttling.
-- **Modular OOP Structure**: Easily extensible for new ATS platforms (Workday, Greenhouse, Lever, Custom) with configurable CSS selectors per target.
-- **SQLite Persistence**: Stores all scraped jobs in a local SQLite database for deduplication — previously-seen jobs are skipped, and notifications are never sent twice.
-- **Retry / Backoff**: All network operations (scraping, AI evaluation, webhook sends) use exponential backoff with up to 3 retries via `tenacity`.
-- **Environment Variable Support**: API keys and webhook URLs can be provided via `config.yaml` or environment variables (`GEMINI_API_KEY`, `WEBHOOK_URL`), making CI/CD deployment seamless.
+---
 
-## Setup Instructions
+## ✨ Features
 
-1. **Install Dependencies**:
+| Feature | Details |
+|---|---|
+| **Multi-Platform Scraping** | LinkedIn & Indeed via Playwright; Greenhouse, Lever, Workday via API interception |
+| **Anti-Detection** | Rotating User-Agents, random delays, human-like scrolling, CAPTCHA/login-wall detection, optional proxy support |
+| **Local ML Scoring** | `Sentence-Transformers + MLP` classifier — offline, instant, zero API cost |
+| **Smart Filtering** | Title blacklist auto-excludes senior/staff/director roles before scoring |
+| **Discord Notifications** | Rich embeds for jobs scoring >80, with deduplication and rate limiting |
+| **Web Dashboard** | Flask-based UI with charts, search, filters, and one-click apply links |
+| **SQLite Persistence** | Deduplication across runs — previously-seen jobs are never re-evaluated |
+| **Retry / Backoff** | All network calls use exponential backoff with up to 3 retries via `tenacity` |
+
+---
+
+## 🗂️ Project Structure
+
+```
+web-crawler/
+│
+├── main.py                    # Pipeline orchestrator: scrape → filter → score → notify
+├── scraper.py                 # Playwright engine with anti-detection & API interception
+├── ml_scorer.py               # Local ML scoring (Sentence-Transformers + MLP)
+├── notifier.py                # Discord webhook alerts
+├── storage.py                 # SQLite persistence & deduplication
+├── dashboard.py               # Flask web dashboard (http://localhost:5050)
+├── models.py                  # Pydantic Job data model
+│
+├── config.yaml                # Targets, keywords, and settings
+├── requirements.txt
+│
+├── generate_training_data.py  # Auto-labels existing jobs to bootstrap ML training
+├── fix_links.py               # One-time tool to fix relative URLs in existing DB
+├── train_data.csv             # ML training labels (auto-generated)
+├── model.pkl                  # Trained MLP classifier (auto-generated)
+│
+├── tests/                     # Unit tests (28 passing)
+└── static/                    # Dashboard frontend (HTML/CSS/JS)
+```
+
+---
+
+## 🚀 Setup
+
+### 1. Install Dependencies
 ```bash
 conda create -n web-crawler python=3.11 -y
 conda activate web-crawler
@@ -22,116 +56,176 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-2. **Configuration**:
-- Open `config.yaml`
-- Replace `YOUR_DISCORD_OR_TELEGRAM_WEBHOOK_URL` with your Discord/Telegram Webhook URL.
-- Replace `YOUR_GEMINI_API_KEY` with your Google Gemini API Key.
-- (Optional) Modify `targets` to add or remove companies.
-- (Optional) Add custom CSS `selectors` to any target for site-specific DOM parsing.
+### 2. Configure `config.yaml`
+```yaml
+settings:
+  headless: true                    # Set false for debugging (harder to block)
+  timeout_ms: 30000
+  notification_webhook_url: "YOUR_DISCORD_WEBHOOK_URL"
+  # proxy: "http://user:pass@host:port"  # Optional: residential proxy
 
-3. **Run Locally**:
+targets:
+  - name: "LinkedIn"
+    url: "https://www.linkedin.com/jobs/search/"
+    type: "linkedin"
+    location: "Vancouver, BC, Canada"
+    search_queries:
+      - "Software Engineer Intern"
+      - "Machine Learning Co-op"
+      - "Data Scientist Intern"
+
+keywords:
+  - Python
+  - React
+  - Machine Learning
+  - Intern
+  - Co-op
+```
+
+### 3. Bootstrap the ML Model
+On first run, generate training labels from any existing jobs in the database, then train:
+```bash
+python generate_training_data.py   # Generates train_data.csv
+python main.py                     # Trains model.pkl automatically on first run
+```
+
+---
+
+## ▶️ Usage
+
+### Run the Scraper
 ```bash
 python main.py
 ```
 
-4. **Run Tests**:
+**Pipeline:**
+1. **Scrape** — Browser visits LinkedIn/Indeed with human-like behavior; API interception handles other platforms
+2. **Deduplicate** — Already-seen jobs are skipped
+3. **Filter** — Jobs with senior/staff/director/manager in the title are excluded
+4. **Score** — ML model scores remaining jobs 0–100 in under 1 second
+5. **Notify** — Jobs scoring >80 are sent to Discord
+
+### Launch the Dashboard
 ```bash
-python -m pytest tests/ -v
+python dashboard.py
+# Open http://localhost:5050
+```
+Features: stats overview, company chart, searchable/sortable job table, color-coded scores, one-click apply links.
+
+---
+
+## 🤖 ML Scoring System
+
+The local scoring system replaces cloud AI APIs entirely:
+
+| Component | Details |
+|---|---|
+| **Embedder** | `all-MiniLM-L6-v2` (~80MB, CPU-friendly, 384-dim) |
+| **Classifier** | `MLPClassifier` with `StandardScaler` (2 hidden layers: 128→64) |
+| **Cold-start** | Cosine similarity fallback when no training data exists yet |
+| **Training data** | Auto-generated by `generate_training_data.py` from scraped jobs |
+
+To retrain after accumulating more data:
+```bash
+python generate_training_data.py
+python -c "from ml_scorer import MLScorer; m = MLScorer(); m.train()"
 ```
 
-## Architecture
+---
 
+## 🛡️ Anti-Detection
+
+Built-in measures to reduce blocking by LinkedIn and Indeed:
+
+- **Rotating User-Agent pool** — Randomly selects from 6 real browser UA strings per session
+- **Randomized viewport** — Resolution varies each run (1366×768 to 1920×1080)
+- **Human-like timing** — Random 2.5–4.5s page wait, 3–7s between searches
+- **Natural scrolling** — `_human_scroll()` with variable distance and speed
+- **Mouse simulation** — Random cursor movement at page load
+- **Block detection** — Detects authwall/CAPTCHA/rate-limit pages and gracefully skips
+- **Proxy support** — Set `proxy:` in `config.yaml` to use a residential IP
+
+> **Tip:** If scraping fails frequently, set `headless: false` in `config.yaml` for lower detection risk.
+
+---
+
+## 🗄️ Database Management
+
+All data is stored in `jobs.db` (SQLite). Use `sqlite3` to inspect:
+
+```bash
+# Total jobs scraped
+sqlite3 jobs.db "SELECT COUNT(*) FROM jobs;"
+
+# Jobs by company
+sqlite3 jobs.db "SELECT company, COUNT(*) FROM jobs GROUP BY company ORDER BY 2 DESC;"
+
+# Top-scored jobs
+sqlite3 jobs.db "SELECT title, company, match_score FROM jobs WHERE match_score > 80 ORDER BY match_score DESC;"
+
+# Fix any broken relative apply links
+python fix_links.py
+
+# Full reset (re-scrape everything)
+rm jobs.db
 ```
-main.py          — orchestrates the scrape → AI filter → notify pipeline
-scraper.py       — Playwright-based scraping engine with API interception
-ai_filter.py     — Gemini-powered job evaluation with concurrent processing
-notifier.py      — Discord webhook notifications with rate limiting
-storage.py       — SQLite-backed persistence and deduplication
-models.py        — Pydantic Job data model
-config.yaml      — targets, keywords, and settings
-```
 
-### Pipeline Flow
+---
 
-1. **Scraping** — A single browser instance visits all configured career pages. API responses are intercepted first; DOM parsing is the fallback. Pagination (Load More / infinite scroll) is handled automatically.
-2. **Deduplication** — New jobs are inserted into SQLite; previously-seen jobs are skipped from AI evaluation.
-3. **AI Evaluation** — New jobs are scored concurrently (up to 5 simultaneous Gemini calls) against your keyword profile.
-4. **Notification** — Jobs scoring > 80 that haven't been notified before are sent to Discord with 1-second rate limiting between messages.
+## ⚙️ GitHub Actions Deployment (Free)
 
-## Low-Cost Deployment (GitHub Actions)
-You can deploy this for free using GitHub Actions. Create `.github/workflows/scrape.yml` in your repository:
+Schedule the scraper to run daily at no cost:
 
 ```yaml
+# .github/workflows/scrape.yml
 name: Daily Job Scraper
 
 on:
   schedule:
-    - cron: '0 16 * * *' # Runs every day at 16:00 UTC (9:00 AM PST)
-  workflow_dispatch: # Allows manual trigger
+    - cron: '0 16 * * *'  # 9:00 AM PST
+  workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
           playwright install chromium
-          
       - name: Run Scraper
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
         run: python main.py
 ```
 
-> **Note:** API keys are read from environment variables automatically when not set in `config.yaml`, so GitHub Actions secrets work out of the box.
+> Commit `model.pkl` and `train_data.csv` to the repo so the trained model is available in CI.
 
-## Viewing and Managing Data
+---
 
-All job data is stored in a local SQLite database named `jobs.db`. You can use the `sqlite3` command-line tool to query your results.
+## 🧪 Tests
 
-### Quick Stats
 ```bash
-# Total jobs count
-sqlite3 jobs.db "SELECT COUNT(*) FROM jobs;"
-
-# Count jobs by company
-sqlite3 jobs.db "SELECT company, COUNT(*) FROM jobs GROUP BY company ORDER BY 2 DESC;"
+python -m pytest tests/ -v
+# 28 tests passing
 ```
 
-### View Results
-```bash
-# View top 15 most recent jobs and their AI scores
-sqlite3 jobs.db "SELECT title, company, match_score, apply_link FROM jobs ORDER BY rowid DESC LIMIT 15;"
+---
 
-# Find high-scoring jobs (>80)
-sqlite3 jobs.db "SELECT title, company, match_score, apply_link FROM jobs WHERE match_score > 80 ORDER BY match_score DESC;"
-```
+## 📦 Dependencies
 
-### Reset Data
-If you want to re-scrape and re-evaluate everything from scratch, simply delete the database file:
-```bash
-rm jobs.db
-```
-
-### Web Dashboard
-For a richer visual experience, launch the built-in web dashboard:
-```bash
-python dashboard.py
-```
-Then open **http://localhost:5050** in your browser. The dashboard features:
-- **Stats overview** — total jobs, AI evaluation count, average score, high matches
-- **Company breakdown chart** — see which companies have the most listings
-- **Searchable & sortable table** — filter by company, score range, or keyword
-- **One-click apply** — direct links to job application pages
-- **Score visualization** — color-coded badges and progress bars
+| Package | Purpose |
+|---|---|
+| `playwright` + `playwright-stealth` | Headless browser & fingerprint masking |
+| `sentence-transformers` | Semantic text embeddings |
+| `scikit-learn` | MLP classifier & training pipeline |
+| `pandas` | Training data handling |
+| `flask` | Web dashboard |
+| `aiohttp` | Async HTTP (Discord webhooks) |
+| `aiosqlite` | Async SQLite access |
+| `pydantic` | Job data model validation |
+| `tenacity` | Retry / exponential backoff |
