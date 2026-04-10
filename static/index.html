@@ -3,567 +3,620 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Job Crawler Dashboard</title>
+  <title>Job Scraper Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    /* ── Reset & Base ─────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* ── Variables & Reset ──────────────────────── */
     :root {
-      --bg: #0b0f1a;
-      --surface: #131829;
-      --surface2: #1a2035;
-      --border: #252d44;
-      --text: #e2e8f0;
-      --text-muted: #8492a6;
-      --accent: #6c63ff;
-      --accent-glow: rgba(108,99,255,.25);
-      --green: #34d399;
-      --yellow: #fbbf24;
-      --red: #f87171;
-      --orange: #fb923c;
-      --radius: 12px;
+      --bg-dark: #050810;
+      --panel-bg: rgba(16, 22, 40, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --accent-primary: #8b5cf6;
+      --accent-secondary: #3b82f6;
+      --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
+      --text-main: #f1f5f9;
+      --text-dim: #94a3b8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+      --font-main: 'Plus Jakarta Sans', sans-serif;
+      --font-display: 'Outfit', sans-serif;
     }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      font-family: var(--font-main);
+      background: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.15) 0px, transparent 50%);
+      color: var(--text-main);
       min-height: 100vh;
-      line-height: 1.6;
+      overflow-x: hidden;
+      padding-bottom: 40px;
+    }
+
+    /* ── Layout ───────────────────────────────── */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ── Glass Effect ─────────────────────────── */
+    .glass {
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      box-shadow: var(--card-shadow);
     }
 
     /* ── Header ───────────────────────────────── */
     .header {
-      background: linear-gradient(135deg, #1a1040 0%, #0d1b3e 50%, #0a1628 100%);
-      border-bottom: 1px solid var(--border);
-      padding: 32px 40px 28px;
+      padding: 40px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      animation: fadeInDown 0.8s ease-out;
     }
-    .header h1 {
-      font-size: 28px;
+
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .brand h1 {
+      font-family: var(--font-display);
+      font-size: 34px;
       font-weight: 700;
-      background: linear-gradient(135deg, #a78bfa, #6c63ff, #38bdf8);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
+      letter-spacing: -0.5px;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
-    .header p { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
 
-    /* ── Stats Row ────────────────────────────── */
-    .stats-row {
+    .brand p {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-top: 6px;
+      font-weight: 500;
+    }
+
+    /* ── Dashboard Grid ───────────────────────── */
+    .grid-stats {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      padding: 24px 40px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 30px;
+      animation: fadeInUp 0.8s ease-out 0.2s both;
     }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px 24px;
-      transition: transform .2s, box-shadow .2s;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+
     .stat-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+      transform: translateY(-5px);
+      border-color: rgba(139, 92, 246, 0.4);
+      background: rgba(16, 22, 40, 0.9);
     }
-    .stat-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
-    .stat-card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
-    .stat-card .value.accent { color: var(--accent); }
-    .stat-card .value.green  { color: var(--green); }
-    .stat-card .value.yellow { color: var(--yellow); }
 
-    /* ── Controls Bar ─────────────────────────── */
-    .controls {
-      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-      padding: 0 40px 20px;
-    }
-    .search-box {
-      flex: 1; min-width: 240px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 16px;
-      color: var(--text);
-      font-size: 14px;
-      outline: none;
-      transition: border-color .2s;
-    }
-    .search-box:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
-    .search-box::placeholder { color: var(--text-muted); }
-    .filter-select {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 16px;
-      color: var(--text);
-      font-size: 14px;
-      outline: none;
-      cursor: pointer;
-      min-width: 160px;
-    }
-    .filter-select:focus { border-color: var(--accent); }
-    .filter-select option { background: var(--surface); color: var(--text); }
-
-    /* ── Table ────────────────────────────────── */
-    .table-container {
-      padding: 0 40px 40px;
-      overflow-x: auto;
-    }
-    table {
-      width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
-      background: var(--surface);
-      border-radius: var(--radius);
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    thead th {
-      background: var(--surface2);
-      font-size: 11px;
+    .stat-card .label {
+      font-size: 13px;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: var(--text-muted);
-      padding: 14px 16px;
-      text-align: left;
-      cursor: pointer;
-      user-select: none;
-      white-space: nowrap;
-      position: sticky; top: 0; z-index: 2;
-      transition: color .2s;
-    }
-    thead th:hover { color: var(--accent); }
-    thead th .sort-arrow { margin-left: 4px; font-size: 10px; }
-    tbody tr {
-      border-bottom: 1px solid var(--border);
-      transition: background .15s;
-    }
-    tbody tr:last-child { border-bottom: none; }
-    tbody tr:hover { background: rgba(108,99,255,.06); }
-    td {
-      padding: 14px 16px;
-      font-size: 13.5px;
-      vertical-align: middle;
+      color: var(--text-dim);
     }
 
-    /* ── Score Badge ──────────────────────────── */
-    .score-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-weight: 600; font-size: 13px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      min-width: 52px;
-      justify-content: center;
-    }
-    .score-high   { background: rgba(52,211,153,.15); color: var(--green); }
-    .score-medium { background: rgba(251,191,36,.15); color: var(--yellow); }
-    .score-low    { background: rgba(248,113,113,.15); color: var(--red); }
-    .score-none   { background: rgba(132,146,166,.1);  color: var(--text-muted); }
-
-    /* ── Score Bar ────────────────────────────── */
-    .score-bar-container {
-      display: flex; align-items: center; gap: 8px;
-    }
-    .score-bar {
-      width: 60px; height: 6px;
-      background: rgba(255,255,255,.08);
-      border-radius: 3px;
-      overflow: hidden;
-    }
-    .score-bar-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: width .4s ease;
+    .stat-card .value {
+      font-family: var(--font-display);
+      font-size: 36px;
+      font-weight: 700;
     }
 
-    /* ── Links ────────────────────────────────── */
-    a.apply-link {
-      color: var(--accent);
-      text-decoration: none;
+    .stat-card .trend {
       font-size: 12px;
-      padding: 4px 10px;
-      border: 1px solid var(--accent);
-      border-radius: 6px;
-      transition: all .2s;
-      white-space: nowrap;
-    }
-    a.apply-link:hover {
-      background: var(--accent);
-      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
 
-    /* ── Title Column ────────────────────────── */
+    /* ── Charts & Visuals ─────────────────────── */
+    .visuals-row {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 24px;
+      margin-bottom: 30px;
+      animation: fadeInUp 0.8s ease-out 0.3s both;
+    }
+
+    .viz-panel {
+      padding: 24px;
+      min-height: 300px;
+    }
+
+    .viz-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .viz-header h2 {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    /* ── Controls & Filter ────────────────────── */
+    .toolbar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      animation: fadeInUp 0.8s ease-out 0.4s both;
+    }
+
+    .input-grp {
+      flex: 1;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 14px 20px 14px 48px;
+      color: white;
+      font-family: var(--font-main);
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+    }
+
+    .select-input {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 0 16px;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      min-width: 160px;
+      outline: none;
+    }
+
+    /* ── Table Styling ────────────────────────── */
+    .table-panel {
+      padding: 0;
+      overflow: hidden;
+      animation: fadeInUp 0.8s ease-out 0.5s both;
+    }
+
+    .table-wrapper {
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #131829;
+      padding: 16px 24px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      border-bottom: 2px solid var(--glass-border);
+      z-index: 10;
+      cursor: pointer;
+    }
+
+    tbody td {
+      padding: 18px 24px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--glass-border);
+      transition: background 0.2s;
+    }
+
+    tbody tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .job-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
     .job-title {
       font-weight: 600;
-      color: var(--text);
-      max-width: 320px;
+      color: var(--text-main);
+      font-size: 15px;
     }
-    .job-company { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
-    .job-location { color: var(--text-muted); font-size: 12px; }
 
-    /* ── Reasoning Tooltip ────────────────────── */
-    .reasoning-cell {
-      max-width: 260px;
+    .job-meta {
       font-size: 12px;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* ── Empty state ──────────────────────────── */
-    .empty-state {
-      text-align: center; padding: 60px 20px;
-      color: var(--text-muted);
-    }
-    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
-    .empty-state h3 { font-size: 18px; color: var(--text); margin-bottom: 8px; }
-
-    /* ── Company breakdown ────────────────────── */
-    .breakdown-section {
-      padding: 0 40px 32px;
-    }
-    .breakdown-title {
-      font-size: 14px; font-weight: 600; color: var(--text-muted);
-      text-transform: uppercase; letter-spacing: 1px;
-      margin-bottom: 12px;
-    }
-    .breakdown-bars {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      color: var(--text-dim);
+      display: flex;
       gap: 8px;
     }
-    .breakdown-item {
-      display: flex; align-items: center; gap: 12px;
-      background: var(--surface);
-      border: 1px solid var(--border);
+
+    /* ── Badges ───────────────────────────────── */
+    .badge {
+      padding: 4px 10px;
       border-radius: 8px;
-      padding: 10px 16px;
-    }
-    .breakdown-item .name { flex: 1; font-size: 13px; font-weight: 500; }
-    .breakdown-item .count {
-      font-size: 13px; font-weight: 700; color: var(--accent);
-      min-width: 28px; text-align: right;
-    }
-    .breakdown-item .bar {
-      width: 80px; height: 5px;
-      background: rgba(255,255,255,.06);
-      border-radius: 3px; overflow: hidden;
-    }
-    .breakdown-item .bar-fill {
-      height: 100%; background: var(--accent);
-      border-radius: 3px; transition: width .5s ease;
-    }
-
-    /* ── Notified badge ────────────────────────── */
-    .notified-badge {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 12px;
-    }
-    .notified-yes { background: rgba(52,211,153,.15); color: var(--green); }
-    .notified-no  { background: rgba(132,146,166,.08); color: var(--text-muted); }
-
-    /* ── Responsive ───────────────────────────── */
-    @media (max-width: 768px) {
-      .header, .stats-row, .controls, .table-container, .breakdown-section {
-        padding-left: 16px; padding-right: 16px;
-      }
-      .stats-row { grid-template-columns: repeat(2, 1fr); }
-    }
-
-    /* ── Loading animation ────────────────────── */
-    .loading {
-      display: flex; align-items: center; justify-content: center;
-      padding: 80px 0; gap: 8px;
-    }
-    .loading .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 1.4s infinite ease-in-out both;
-    }
-    .loading .dot:nth-child(1) { animation-delay: -0.32s; }
-    .loading .dot:nth-child(2) { animation-delay: -0.16s; }
-    @keyframes pulse {
-      0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
-      40% { transform: scale(1); opacity: 1; }
-    }
-
-    /* ── Count badge ──────────────────────────── */
-    .count-badge {
-      display: inline-block;
-      background: var(--accent-glow);
-      color: var(--accent);
       font-size: 12px;
-      font-weight: 600;
-      padding: 2px 10px;
-      border-radius: 12px;
-      margin-left: 8px;
+      font-weight: 700;
     }
+
+    .score-high { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .score-med  { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+    .score-low  { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+    .btn-apply {
+      display: inline-block;
+      padding: 8px 16px;
+      background: var(--accent-gradient);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      transition: all 0.3s;
+    }
+
+    .btn-apply:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+    }
+
+    /* ── Custom Scrollbar ─────────────────────── */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+    ::-webkit-scrollbar-thumb { 
+      background: rgba(255,255,255,0.1); 
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+    /* ── Loading Overlay ──────────────────────── */
+    .loader {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--bg-dark);
+      z-index: 1000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: opacity 0.5s;
+    }
+    .loader.hidden { opacity: 0; pointer-events: none; }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
-  <div class="header">
-    <h1>🕷️ Job Crawler Dashboard</h1>
-    <p>Real-time visualization of scraped jobs from LinkedIn, Indeed, and company career pages</p>
+  <div class="loader" id="loader">
+    <div style="width:50px; height:50px; border:4px solid var(--accent-primary); border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite;"></div>
   </div>
 
-  <!-- Stats -->
-  <div class="stats-row" id="stats-row">
-    <div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <h1>🕷️ Job Scraper</h1>
+        <p>Advanced Real-time Portfolio Monitoring & AI Analysis</p>
+      </div>
+      <div class="status-pill glass" style="padding: 10px 20px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+        <span style="width:8px; height:8px; background:var(--success); border-radius:50%; box-shadow: 0 0 10px var(--success);"></span>
+        System Active
+      </div>
+    </header>
+
+    <!-- Stats Grid -->
+    <div class="grid-stats" id="stats-grid">
+      <div class="stat-card glass"><div class="label">Loading...</div></div>
+    </div>
+
+    <!-- Visuals Row -->
+    <div class="visuals-row">
+      <div class="viz-panel glass">
+        <div class="viz-header"><h2>Jobs per Company</h2></div>
+        <canvas id="companyChart" height="200"></canvas>
+      </div>
+      <div class="viz-panel glass">
+        <div class="viz-header"><h2>Score Distribution</h2></div>
+        <canvas id="scoreChart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="input-grp">
+        <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="searchBox" class="search-input" placeholder="Search keywords, positions, companies..." />
+      </div>
+      <select id="companyFilter" class="select-input glass">
+        <option value="">All Companies</option>
+      </select>
+      <select id="scoreFilter" class="select-input glass">
+        <option value="">All Matches</option>
+        <option value="90">90%+ Elite</option>
+        <option value="80">80%+ High Match</option>
+        <option value="50">50%+ Medium</option>
+      </select>
+    </div>
+
+    <!-- Table Panel -->
+    <div class="table-panel glass">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="sortData('title')">Position & Company</th>
+              <th onclick="sortData('location')">Location</th>
+              <th onclick="sortData('match_score')">AI Score</th>
+              <th>AI Analysis</th>
+              <th onclick="sortData('first_seen')">Detected</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="jobTableBody">
+            <!-- Data injected here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
-  <!-- Company Breakdown -->
-  <div class="breakdown-section" id="breakdown-section"></div>
+  <script>
+    let appState = {
+      jobs: [],
+      stats: {},
+      sortBy: 'first_seen',
+      sortDir: 'desc'
+    };
 
-  <!-- Controls -->
-  <div class="controls">
-    <input type="text" class="search-box" id="search" placeholder="🔍  Search by title, company, or location..." />
-    <select class="filter-select" id="company-filter">
-      <option value="">All Companies</option>
-    </select>
-    <select class="filter-select" id="score-filter">
-      <option value="">All Scores</option>
-      <option value="high">High (80+)</option>
-      <option value="medium">Medium (50-79)</option>
-      <option value="low">Low (0-49)</option>
-      <option value="unscored">Not Scored</option>
-    </select>
-  </div>
-
-  <!-- Table -->
-  <div class="table-container">
-    <table id="jobs-table">
-      <thead>
-        <tr>
-          <th data-sort="title">Job Title <span class="sort-arrow"></span></th>
-          <th data-sort="location">Location <span class="sort-arrow"></span></th>
-          <th data-sort="match_score">Score <span class="sort-arrow"></span></th>
-          <th>AI Reasoning</th>
-          <th data-sort="first_seen">Found <span class="sort-arrow"></span></th>
-          <th>Status</th>
-          <th>Apply</th>
-        </tr>
-      </thead>
-      <tbody id="jobs-tbody">
-        <tr><td colspan="7"><div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-<script>
-// ── State ──────────────────────────────────────────
-let allJobs = [];
-let sortKey = "first_seen";
-let sortDir = -1; // -1 = desc
-
-// ── Fetch Data ─────────────────────────────────────
-async function init() {
-  const [statsRes, jobsRes] = await Promise.all([
-    fetch("/api/stats"),
-    fetch("/api/jobs"),
-  ]);
-  const stats = await statsRes.json();
-  allJobs = await jobsRes.json();
-
-  renderStats(stats);
-  renderBreakdown(stats.company_breakdown);
-  populateCompanyFilter();
-  renderTable();
-  attachListeners();
-}
-
-// ── Stats Cards ────────────────────────────────────
-function renderStats(s) {
-  document.getElementById("stats-row").innerHTML = `
-    <div class="stat-card">
-      <div class="label">Total Jobs</div>
-      <div class="value accent">${s.total}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">AI Evaluated</div>
-      <div class="value" style="color:#38bdf8">${s.scored}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Avg Score</div>
-      <div class="value yellow">${s.avg_score}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">High Match (80+)</div>
-      <div class="value green">${s.high_match}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Companies</div>
-      <div class="value" style="color:#c084fc">${s.companies}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Notified</div>
-      <div class="value" style="color:#fb923c">${s.notified}</div>
-    </div>
-  `;
-}
-
-// ── Company Breakdown Bars ─────────────────────────
-function renderBreakdown(items) {
-  if (!items || !items.length) return;
-  const max = items[0].count;
-  const section = document.getElementById("breakdown-section");
-  section.innerHTML = `
-    <div class="breakdown-title">Top Companies</div>
-    <div class="breakdown-bars">
-      ${items.map(it => `
-        <div class="breakdown-item">
-          <div class="name">${esc(it.name)}</div>
-          <div class="bar"><div class="bar-fill" style="width:${(it.count/max*100).toFixed(0)}%"></div></div>
-          <div class="count">${it.count}</div>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-// ── Company Filter Dropdown ────────────────────────
-function populateCompanyFilter() {
-  const companies = [...new Set(allJobs.map(j => j.company))].sort();
-  const sel = document.getElementById("company-filter");
-  companies.forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c; opt.textContent = c;
-    sel.appendChild(opt);
-  });
-}
-
-// ── Score helpers ──────────────────────────────────
-function scoreClass(s) {
-  if (s === null || s === undefined) return "score-none";
-  if (s >= 80) return "score-high";
-  if (s >= 50) return "score-medium";
-  return "score-low";
-}
-function scoreColor(s) {
-  if (s === null || s === undefined) return "var(--text-muted)";
-  if (s >= 80) return "var(--green)";
-  if (s >= 50) return "var(--yellow)";
-  return "var(--red)";
-}
-function timeAgo(dateStr) {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now - d;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
-function esc(str) {
-  if (!str) return "";
-  const d = document.createElement("div");
-  d.textContent = str;
-  return d.innerHTML;
-}
-
-// ── Render Table ──────────────────────────────────
-function renderTable() {
-  const search = document.getElementById("search").value.toLowerCase();
-  const companyFilter = document.getElementById("company-filter").value;
-  const scoreFilter = document.getElementById("score-filter").value;
-
-  let filtered = allJobs.filter(j => {
-    if (search) {
-      const haystack = `${j.title} ${j.company} ${j.location}`.toLowerCase();
-      if (!haystack.includes(search)) return false;
+    async function fetchData() {
+      try {
+        const [statsRes, jobsRes] = await Promise.all([
+          fetch('/api/stats'),
+          fetch('/api/jobs')
+        ]);
+        appState.stats = await statsRes.json();
+        appState.jobs = await jobsRes.json();
+        
+        updateUI();
+        document.getElementById('loader').classList.add('hidden');
+      } catch (e) {
+        console.error("Fetch failed", e);
+      }
     }
-    if (companyFilter && j.company !== companyFilter) return false;
-    if (scoreFilter) {
-      const s = j.match_score;
-      if (scoreFilter === "high" && (s === null || s < 80)) return false;
-      if (scoreFilter === "medium" && (s === null || s < 50 || s >= 80)) return false;
-      if (scoreFilter === "low" && (s === null || s >= 50)) return false;
-      if (scoreFilter === "unscored" && s !== null) return false;
+
+    function updateUI() {
+      renderStats();
+      renderCharts();
+      populateDropdowns();
+      filterAndRenderTable();
     }
-    return true;
-  });
 
-  // Sort
-  filtered.sort((a, b) => {
-    let va = a[sortKey], vb = b[sortKey];
-    if (va === null || va === undefined) va = sortDir === 1 ? Infinity : -Infinity;
-    if (vb === null || vb === undefined) vb = sortDir === 1 ? Infinity : -Infinity;
-    if (typeof va === "string") return sortDir * va.localeCompare(vb);
-    return sortDir * (va - vb);
-  });
-
-  const tbody = document.getElementById("jobs-tbody");
-
-  if (!filtered.length) {
-    tbody.innerHTML = `
-      <tr><td colspan="7">
-        <div class="empty-state">
-          <div class="icon">🔍</div>
-          <h3>No jobs match your filters</h3>
-          <p>Try adjusting your search or filters</p>
+    function renderStats() {
+      const g = document.getElementById('stats-grid');
+      const s = appState.stats;
+      g.innerHTML = `
+        <div class="stat-card glass">
+          <div class="label">Total Scraped</div>
+          <div class="value">${s.total}</div>
         </div>
-      </td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = filtered.map(j => {
-    const s = j.match_score;
-    const scoreVal = s !== null && s !== undefined ? s : "—";
-    const barWidth = s !== null && s !== undefined ? s : 0;
-
-    return `<tr>
-      <td>
-        <div class="job-title">${esc(j.title)}</div>
-        <div class="job-company">${esc(j.company)}</div>
-      </td>
-      <td><div class="job-location">${esc(j.location)}</div></td>
-      <td>
-        <div class="score-bar-container">
-          <span class="score-badge ${scoreClass(s)}">${scoreVal}</span>
-          <div class="score-bar">
-            <div class="score-bar-fill" style="width:${barWidth}%;background:${scoreColor(s)}"></div>
-          </div>
+        <div class="stat-card glass">
+          <div class="label">Elite Matches</div>
+          <div class="value" style="color:var(--accent-primary)">${s.high_match}</div>
         </div>
-      </td>
-      <td><div class="reasoning-cell">${esc(j.match_reasoning) || '<span style="color:var(--text-muted)">—</span>'}</div></td>
-      <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${timeAgo(j.first_seen)}</td>
-      <td><span class="notified-badge ${j.notified ? 'notified-yes' : 'notified-no'}">${j.notified ? '✓ Sent' : 'Pending'}</span></td>
-      <td>${j.apply_link ? `<a class="apply-link" href="${esc(j.apply_link)}" target="_blank" rel="noopener">Apply →</a>` : '—'}</td>
-    </tr>`;
-  }).join("");
+        <div class="stat-card glass">
+          <div class="label">Average Score</div>
+          <div class="value" style="color:var(--warning)">${s.avg_score}%</div>
+        </div>
+        <div class="stat-card glass">
+          <div class="label">Alerts Sent</div>
+          <div class="value" style="color:var(--success)">${s.notified}</div>
+        </div>
+      `;
+    }
 
-  // Update count badge in header
-  const countEl = document.getElementById("filter-count");
-  if (countEl) countEl.textContent = filtered.length;
-}
+    let charts = {};
+    function renderCharts() {
+      const ctx1 = document.getElementById('companyChart').getContext('2d');
+      const ctx2 = document.getElementById('scoreChart').getContext('2d');
+      
+      if (charts.company) charts.company.destroy();
+      if (charts.score) charts.score.destroy();
 
-// ── Listeners ────────────────────────────────────
-function attachListeners() {
-  document.getElementById("search").addEventListener("input", renderTable);
-  document.getElementById("company-filter").addEventListener("change", renderTable);
-  document.getElementById("score-filter").addEventListener("change", renderTable);
+      const companies = appState.stats.company_breakdown || [];
+      
+      charts.company = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+          labels: companies.map(c => c.name),
+          datasets: [{
+            label: 'Jobs',
+            data: companies.map(c => c.count),
+            backgroundColor: 'rgba(139, 92, 246, 0.5)',
+            borderColor: '#8b5cf6',
+            borderWidth: 1,
+            borderRadius: 5
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
 
-  // Column sorting
-  document.querySelectorAll("thead th[data-sort]").forEach(th => {
-    th.addEventListener("click", () => {
-      const key = th.dataset.sort;
-      if (sortKey === key) { sortDir *= -1; }
-      else { sortKey = key; sortDir = key === "match_score" ? -1 : 1; }
+      // Simple score histogram
+      const scoreBuckets = [0, 20, 40, 60, 80, 101];
+      const scoreCounts = new Array(scoreBuckets.length - 1).fill(0);
+      appState.jobs.forEach(j => {
+        const s = j.match_score || 0;
+        for (let i = 0; i < scoreBuckets.length - 1; i++) {
+          if (s >= scoreBuckets[i] && s < scoreBuckets[i+1]) {
+            scoreCounts[i]++;
+            break;
+          }
+        }
+      });
 
-      // Update arrows
-      document.querySelectorAll("thead th .sort-arrow").forEach(s => s.textContent = "");
-      th.querySelector(".sort-arrow").textContent = sortDir === 1 ? " ▲" : " ▼";
+      charts.score = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: ['0-20', '21-40', '41-60', '61-80', '81-100'],
+          datasets: [{
+            data: scoreCounts,
+            backgroundColor: [
+              'rgba(239, 68, 68, 0.4)',
+              'rgba(249, 115, 22, 0.4)',
+              'rgba(245, 158, 11, 0.4)',
+              'rgba(59, 130, 246, 0.4)',
+              'rgba(16, 185, 129, 0.4)'
+            ],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          plugins: { 
+            legend: { 
+              position: 'right',
+              labels: { color: '#94a3b8', font: { size: 10 } }
+            } 
+          },
+          cutout: '70%'
+        }
+      });
+    }
 
-      renderTable();
-    });
-  });
-}
+    function populateDropdowns() {
+      const sel = document.getElementById('companyFilter');
+      const companies = [...new Set(appState.jobs.map(j => j.company))].sort();
+      sel.innerHTML = '<option value="">All Companies</option>' + 
+        companies.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
 
-// ── Boot ─────────────────────────────────────────
-init();
-</script>
+    function sortData(key) {
+      if (appState.sortBy === key) {
+        appState.sortDir = appState.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        appState.sortBy = key;
+        appState.sortDir = 'desc';
+      }
+      filterAndRenderTable();
+    }
+
+    function filterAndRenderTable() {
+      const search = document.getElementById('searchBox').value.toLowerCase();
+      const comp = document.getElementById('companyFilter').value;
+      const score = document.getElementById('scoreFilter').value;
+
+      let filtered = appState.jobs.filter(j => {
+        const matchesSearch = `${j.title} ${j.company} ${j.description}`.toLowerCase().includes(search);
+        const matchesComp = !comp || j.company === comp;
+        const matchesScore = !score || (j.match_score >= parseInt(score));
+        return matchesSearch && matchesComp && matchesScore;
+      });
+
+      filtered.sort((a, b) => {
+        let v1 = a[appState.sortBy];
+        let v2 = b[appState.sortBy];
+        if (typeof v1 === 'string') v1 = v1.toLowerCase();
+        if (typeof v2 === 'string') v2 = v2.toLowerCase();
+        
+        if (v1 < v2) return appState.sortDir === 'asc' ? -1 : 1;
+        if (v1 > v2) return appState.sortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      const body = document.getElementById('jobTableBody');
+      body.innerHTML = filtered.map(j => {
+        const s = j.match_score || 0;
+        const sClass = s >= 80 ? 'score-high' : s >= 50 ? 'score-med' : 'score-low';
+        
+        return `
+          <tr>
+            <td>
+              <div class="job-info">
+                <span class="job-title">${esc(j.title)}</span>
+                <span class="job-meta">🏢 ${esc(j.company)}</span>
+              </div>
+            </td>
+            <td><span class="job-meta">📍 ${esc(j.location)}</span></td>
+            <td><span class="badge ${sClass}">${s}%</span></td>
+            <td style="max-width:300px"><div style="font-size:12px; color:var(--text-dim); line-height:1.4">${esc(j.match_reasoning) || 'Analysis pending...'}</div></td>
+            <td><span class="job-meta">🕒 ${formatDate(j.first_seen)}</span></td>
+            <td><a href="${j.apply_link}" target="_blank" class="btn-apply">Explore</a></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function esc(t) {
+      const d = document.createElement('div');
+      d.textContent = t;
+      return d.innerHTML;
+    }
+
+    function formatDate(d) {
+      if (!d) return 'N/A';
+      const date = new Date(d);
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    document.getElementById('searchBox').addEventListener('input', filterAndRenderTable);
+    document.getElementById('companyFilter').addEventListener('change', filterAndRenderTable);
+    document.getElementById('scoreFilter').addEventListener('change', filterAndRenderTable);
+
+    fetchData();
+    setInterval(fetchData, 60000); // Auto refresh every minute
+  </script>
 </body>
 </html>

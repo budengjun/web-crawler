@@ -48,6 +48,7 @@ async def main():
     )
 
     # Initialize modules
+    db_path = settings.get('database_path', 'jobs.db')
     scraper = ScraperEngine(
         headless=settings.get('headless', True),
         timeout=settings.get('timeout_ms', 30000),
@@ -58,7 +59,7 @@ async def main():
 
     notifier = Notifier(webhook_url=webhook_url)
 
-    async with JobStore() as store:
+    async with JobStore(db_path=db_path) as store:
         # ── Phase 1: Scraping (single shared browser) ──
         all_jobs = await scraper.scrape_all(targets)
         logger.info(f"Total raw jobs scraped: {len(all_jobs)}")

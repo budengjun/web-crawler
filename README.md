@@ -1,29 +1,32 @@
-# Vancouver Tech Intern Job Crawler 🕷️
+# Vancouver Tech Intern Job Scraper 🕷️
 
-An automated job monitoring system that scrapes **LinkedIn** and **Indeed** for **Software / AI / ML / Data intern and co-op positions** in Vancouver, Canada. Scores them locally using a machine learning model, and sends real-time Discord alerts.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![Playwright](https://img.shields.io/badge/playwright-%E2%9C%85-green)](https://playwright.dev/)
+[![Scikit-Learn](https://img.shields.io/badge/ML-Scikit--Learn-orange)](https://scikit-learn.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+An automated job monitoring system that scrapes **LinkedIn** and **Indeed** for **Software / AI / ML / Data intern and co-op positions** in Vancouver, Canada. It scores jobs locally using a machine learning model and sends real-time Discord alerts.
+
+![Job Scraper Dashboard](demo.png)
 
 ---
 
 ## ✨ Features
 
-| Feature | Details |
-|---|---|
-| **Multi-Platform Scraping** | LinkedIn & Indeed via Playwright; Greenhouse, Lever, Workday via API interception |
-| **Anti-Detection** | Rotating User-Agents, random delays, human-like scrolling, CAPTCHA/login-wall detection, optional proxy support |
-| **Local ML Scoring** | `Sentence-Transformers + MLP` classifier — offline, instant, zero API cost |
-| **Smart Filtering** | Title blacklist auto-excludes senior/staff/director roles before scoring |
-| **Discord Notifications** | Rich embeds for jobs scoring >80, with deduplication and rate limiting |
-| **Web Dashboard** | Flask-based UI with charts, search, filters, and one-click apply links |
-| **SQLite Persistence** | Deduplication across runs — previously-seen jobs are never re-evaluated |
-| **Retry / Backoff** | All network calls use exponential backoff with up to 3 retries via `tenacity` |
+- 🕵️ **Multi-Platform Scraping**: LinkedIn & Indeed via Playwright; Greenhouse, Lever, Workday via API interception.
+- 🛡️ **Advanced Anti-Detection**: Rotating User-Agents, random viewports, human-like scrolling, and mouse simulation.
+- 🧠 **Local ML Scoring**: Offline `Sentence-Transformers + MLP` classifier — no API costs, instant results.
+- 📊 **Rich Web Dashboard**: Beautiful Flask-based UI with charts, search, filters, and one-click apply links.
+- 🔔 **Discord Notifications**: Rich embeds for highly relevant jobs with deduplication and rate limiting.
+- 🗄️ **Persistent Storage**: SQLite-backed history prevents re-processing old jobs.
+- 🔄 **Robust Pipeline**: Exponential backoff and retry logic for reliable scraping.
 
 ---
 
-## 🗂️ Project Structure
+## 🗂️ Project Architecture
 
 ```
-web-crawler/
-│
+web-scraper/
 ├── main.py                    # Pipeline orchestrator: scrape → filter → score → notify
 ├── scraper.py                 # Playwright engine with anti-detection & API interception
 ├── ml_scorer.py               # Local ML scoring (Sentence-Transformers + MLP)
@@ -31,155 +34,86 @@ web-crawler/
 ├── storage.py                 # SQLite persistence & deduplication
 ├── dashboard.py               # Flask web dashboard (http://localhost:5050)
 ├── models.py                  # Pydantic Job data model
-│
 ├── config.yaml                # Targets, keywords, and settings
-├── requirements.txt
-│
-├── generate_training_data.py  # Auto-labels existing jobs to bootstrap ML training
-├── fix_links.py               # One-time tool to fix relative URLs in existing DB
-├── train_data.csv             # ML training labels (auto-generated)
-├── model.pkl                  # Trained MLP classifier (auto-generated)
-│
-├── tests/                     # Unit tests (28 passing)
-└── static/                    # Dashboard frontend (HTML/CSS/JS)
+├── requirements.txt           # Project dependencies
+├── static/                    # Dashboard frontend (HTML/CSS/JS)
+└── tests/                     # Unit tests (28 passing)
 ```
 
 ---
 
-## 🚀 Setup
+## 🚀 Quick Start
 
 ### 1. Install Dependencies
 ```bash
-conda create -n web-crawler python=3.11 -y
-conda activate web-crawler
+conda create -n web-scraper python=3.11 -y
+conda activate web-scraper
 pip install -r requirements.txt
 playwright install chromium
 ```
 
-### 2. Configure `config.yaml`
+### 2. Configure Settings
+Edit `config.yaml` to set your Discord webhook and search preferences:
 ```yaml
 settings:
-  headless: true                    # Set false for debugging (harder to block)
-  timeout_ms: 30000
   notification_webhook_url: "YOUR_DISCORD_WEBHOOK_URL"
-  # proxy: "http://user:pass@host:port"  # Optional: residential proxy
 
 targets:
   - name: "LinkedIn"
     url: "https://www.linkedin.com/jobs/search/"
     type: "linkedin"
     location: "Vancouver, BC, Canada"
-    search_queries:
-      - "Software Engineer Intern"
-      - "Machine Learning Co-op"
-      - "Data Scientist Intern"
-
-keywords:
-  - Python
-  - React
-  - Machine Learning
-  - Intern
-  - Co-op
+    search_queries: ["Software Engineer Intern", "Machine Learning Co-op"]
 ```
 
-### 3. Bootstrap the ML Model
-On first run, generate training labels from any existing jobs in the database, then train:
+### 3. Run the System
 ```bash
-python generate_training_data.py   # Generates train_data.csv
-python main.py                     # Trains model.pkl automatically on first run
-```
-
----
-
-## ▶️ Usage
-
-### Run the Scraper
-```bash
+# Start the scraper
 python main.py
-```
 
-**Pipeline:**
-1. **Scrape** — Browser visits LinkedIn/Indeed with human-like behavior; API interception handles other platforms
-2. **Deduplicate** — Already-seen jobs are skipped
-3. **Filter** — Jobs with senior/staff/director/manager in the title are excluded
-4. **Score** — ML model scores remaining jobs 0–100 in under 1 second
-5. **Notify** — Jobs scoring >80 are sent to Discord
-
-### Launch the Dashboard
-```bash
+# Launch the dashboard
 python dashboard.py
-# Open http://localhost:5050
+# View at http://localhost:5050
 ```
-Features: stats overview, company chart, searchable/sortable job table, color-coded scores, one-click apply links.
 
 ---
 
-## 🤖 ML Scoring System
+## 🤖 AI Scoring System
 
-The local scoring system replaces cloud AI APIs entirely:
+The local scoring system replaces expensive cloud AI APIs with a high-performance local pipeline:
 
-| Component | Details |
-|---|---|
-| **Embedder** | `all-MiniLM-L6-v2` (~80MB, CPU-friendly, 384-dim) |
-| **Classifier** | `MLPClassifier` with `StandardScaler` (2 hidden layers: 128→64) |
-| **Cold-start** | Cosine similarity fallback when no training data exists yet |
-| **Training data** | Auto-generated by `generate_training_data.py` from scraped jobs |
+| Component | Technology | Description |
+|---|---|---|
+| **Embedder** | `all-MiniLM-L6-v2` | CPU-friendly transformer (~80MB) that converts job descriptions into 384-dim vectors. |
+| **Classifier** | `MLPClassifier` | Multi-layer Perceptron trained on your historical data to predict job relevance. |
+| **Backoff** | `Cosine Similarity` | Fallback mechanism that scores jobs based on keyword similarity if no training data is present. |
+| **Training** | `Auto-Labeling` | `generate_training_data.py` bootstraps your model by labeling your existing jobs database. |
 
-To retrain after accumulating more data:
+To retrain the model after gathering more data:
 ```bash
 python generate_training_data.py
-python -c "from ml_scorer import MLScorer; m = MLScorer(); m.train()"
+python -c "from ml_scorer import MLScorer; MLScorer().train()"
 ```
 
 ---
 
-## 🛡️ Anti-Detection
+## 🛡️ Anti-Detection Suite
 
-Built-in measures to reduce blocking by LinkedIn and Indeed:
-
-- **Rotating User-Agent pool** — Randomly selects from 6 real browser UA strings per session
-- **Randomized viewport** — Resolution varies each run (1366×768 to 1920×1080)
-- **Human-like timing** — Random 2.5–4.5s page wait, 3–7s between searches
-- **Natural scrolling** — `_human_scroll()` with variable distance and speed
-- **Mouse simulation** — Random cursor movement at page load
-- **Block detection** — Detects authwall/CAPTCHA/rate-limit pages and gracefully skips
-- **Proxy support** — Set `proxy:` in `config.yaml` to use a residential IP
-
-> **Tip:** If scraping fails frequently, set `headless: false` in `config.yaml` for lower detection risk.
+Engineered to operate reliably without being flagged:
+- **Fingerprint Masking**: Uses `playwright-stealth` to bypass header-based detection.
+- **Dynamic Behavior**: Randomizes wait times, scroll speeds, and mouse paths.
+- **Session Variance**: Varies viewport resolutions and User-Agent strings per run.
+- **Headless Toggle**: Easy switch to non-headless mode in `config.yaml` for high-security targets.
 
 ---
 
-## 🗄️ Database Management
+## ⚙️ Automated Deployment
 
-All data is stored in `jobs.db` (SQLite). Use `sqlite3` to inspect:
-
-```bash
-# Total jobs scraped
-sqlite3 jobs.db "SELECT COUNT(*) FROM jobs;"
-
-# Jobs by company
-sqlite3 jobs.db "SELECT company, COUNT(*) FROM jobs GROUP BY company ORDER BY 2 DESC;"
-
-# Top-scored jobs
-sqlite3 jobs.db "SELECT title, company, match_score FROM jobs WHERE match_score > 80 ORDER BY match_score DESC;"
-
-# Fix any broken relative apply links
-python fix_links.py
-
-# Full reset (re-scrape everything)
-rm jobs.db
-```
-
----
-
-## ⚙️ GitHub Actions Deployment (Free)
-
-Schedule the scraper to run daily at no cost:
+Schedule the scraper to run for free using **GitHub Actions**:
 
 ```yaml
 # .github/workflows/scrape.yml
 name: Daily Job Scraper
-
 on:
   schedule:
     - cron: '0 16 * * *'  # 9:00 AM PST
@@ -191,41 +125,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
+        with: { python-version: '3.11' }
+      - name: Install
         run: |
           pip install -r requirements.txt
           playwright install chromium
-      - name: Run Scraper
-        env:
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      - name: Scrape
+        env: { WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }} }
         run: python main.py
 ```
 
-> Commit `model.pkl` and `train_data.csv` to the repo so the trained model is available in CI.
-
 ---
 
-## 🧪 Tests
+## 🧪 Development
 
 ```bash
+# Run tests
 python -m pytest tests/ -v
-# 28 tests passing
+
+# Inspect database
+sqlite3 jobs.db "SELECT title, company, match_score FROM jobs WHERE match_score > 80;"
+
+# Fix relative links
+python fix_links.py
 ```
 
 ---
 
-## 📦 Dependencies
-
-| Package | Purpose |
-|---|---|
-| `playwright` + `playwright-stealth` | Headless browser & fingerprint masking |
-| `sentence-transformers` | Semantic text embeddings |
-| `scikit-learn` | MLP classifier & training pipeline |
-| `pandas` | Training data handling |
-| `flask` | Web dashboard |
-| `aiohttp` | Async HTTP (Discord webhooks) |
-| `aiosqlite` | Async SQLite access |
-| `pydantic` | Job data model validation |
-| `tenacity` | Retry / exponential backoff |
+## 📝 License
+Distributed under the MIT License. See `LICENSE` for more information.
