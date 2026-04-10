@@ -1,9 +1,11 @@
 import asyncio
+import os
 import yaml
 import logging
 from scraper import ScraperEngine
 from ai_filter import AIFilter
 from notifier import Notifier
+from storage import JobStore
 
 # 配置日志
 logging.basicConfig(
@@ -11,6 +13,14 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _resolve_setting(config_value: str, env_var: str, placeholder: str) -> str:
+    """Return config_value unless it is empty or a placeholder, then fall back to env var."""
+    if config_value and config_value != placeholder:
+        return config_value
+    return os.environ.get(env_var, "")
+
 
 async def main():
     # 读取配置文件
@@ -25,42 +35,66 @@ async def main():
     targets = config.get('targets', [])
     keywords = config.get('keywords', [])
 
+    # Resolve API keys with env-var fallback (useful for CI / GitHub Actions)
+    gemini_key = _resolve_setting(
+        settings.get('gemini_api_key', ''),
+        'GEMINI_API_KEY',
+        'YOUR_GEMINI_API_KEY',
+    )
+    webhook_url = _resolve_setting(
+        settings.get('notification_webhook_url', ''),
+        'WEBHOOK_URL',
+        'YOUR_DISCORD_OR_TELEGRAM_WEBHOOK_URL',
+    )
+
     # 初始化各个模块
     scraper = ScraperEngine(
         headless=settings.get('headless', True),
         timeout=settings.get('timeout_ms', 30000)
     )
-    
+
     ai_filter = AIFilter(
-        api_key=settings.get('gemini_api_key', ''),
-        keywords=keywords
-    )
-    
-    notifier = Notifier(
-        webhook_url=settings.get('notification_webhook_url', '')
+        api_key=gemini_key,
+        keywords=keywords,
     )
 
-    all_jobs = []
+    notifier = Notifier(webhook_url=webhook_url)
 
-    # 1. 抓取招聘信息 (Scraping Phase)
-    for target in targets:
-        jobs = await scraper.scrape_target(target)
-        logger.info(f"✅ Found {len(jobs)} jobs for {target['name']}")
-        all_jobs.extend(jobs)
+    async with JobStore() as store:
+        # ── Phase 1: Scraping (single shared browser) ──
+        all_jobs = await scraper.scrape_all(targets)
+        logger.info(f"Total raw jobs scraped: {len(all_jobs)}")
 
-    # 2. AI 过滤与打分 (AI Filtering Phase)
-    filtered_jobs = []
-    logger.info(f"Starting AI Evaluation for {len(all_jobs)} jobs...")
-    for job in all_jobs:
-        # 为防止并发请求过多导致 Rate Limit，可以根据需要改写为 asyncio.gather(限制并发数)
-        evaluated_job = await ai_filter.evaluate_job(job)
-        filtered_jobs.append(evaluated_job)
+        # ── Phase 1.5: Deduplication ──
+        new_jobs = []
+        for job in all_jobs:
+            is_new = await store.upsert_job(job)
+            if is_new:
+                new_jobs.append(job)
 
-    # 3. 结果通知 (Notification Phase)
-    logger.info("Sending notifications for matched jobs...")
-    await notifier.send_notification(filtered_jobs)
-    
+        logger.info(
+            f"New jobs after deduplication: {len(new_jobs)} "
+            f"(skipped {len(all_jobs) - len(new_jobs)} already-seen)"
+        )
+
+        if not new_jobs:
+            logger.info("No new jobs to evaluate. Done.")
+            return
+
+        # ── Phase 2: AI Filtering (concurrent) ──
+        logger.info(f"Starting AI evaluation for {len(new_jobs)} new jobs...")
+        evaluated_jobs = await ai_filter.evaluate_jobs(new_jobs)
+
+        # Persist AI scores
+        for job in evaluated_jobs:
+            await store.upsert_job(job)
+
+        # ── Phase 3: Notification (with dedup & rate limiting) ──
+        logger.info("Sending notifications for matched jobs...")
+        await notifier.send_notification(evaluated_jobs, store=store)
+
     logger.info("🚀 Scraping cycle completed successfully!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

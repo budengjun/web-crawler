@@ -35,6 +35,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Database
+*.db
+
 # Config
 config.yaml
 

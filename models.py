@@ -13,3 +13,7 @@ class Job(BaseModel):
     # AI Filtering fields
     match_score: Optional[int] = Field(None, description="AI calculated match score (0-100)")
     match_reasoning: Optional[str] = Field(None, description="AI reasoning for the score")
+
+    # Persistence / deduplication fields
+    first_seen: Optional[datetime] = Field(None, description="Timestamp when this job was first scraped")
+    notified: bool = Field(False, description="Whether a notification has been sent for this job")
