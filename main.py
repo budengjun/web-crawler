@@ -3,7 +3,7 @@ import os
 import yaml
 import logging
 from scraper import ScraperEngine
-from ai_filter import AIFilter
+from ml_scorer import MLScorer
 from notifier import Notifier
 from storage import JobStore
 
@@ -47,16 +47,14 @@ async def main():
         'YOUR_DISCORD_OR_TELEGRAM_WEBHOOK_URL',
     )
 
-    # 初始化各个模块
+    # Initialize modules
     scraper = ScraperEngine(
         headless=settings.get('headless', True),
-        timeout=settings.get('timeout_ms', 30000)
+        timeout=settings.get('timeout_ms', 30000),
+        proxy=settings.get('proxy', None),
     )
 
-    ai_filter = AIFilter(
-        api_key=gemini_key,
-        keywords=keywords,
-    )
+    scorer = MLScorer()
 
     notifier = Notifier(webhook_url=webhook_url)
 
@@ -77,13 +75,29 @@ async def main():
             f"(skipped {len(all_jobs) - len(new_jobs)} already-seen)"
         )
 
+        # ── Phase 1.6: Exclude unwanted seniority levels ──
+        TITLE_BLACKLIST = ["senior", "staff", "principal", "lead", "director", "manager"]
+        filtered_jobs = []
+        excluded = 0
+        for job in new_jobs:
+            title_lower = job.title.lower()
+            if any(word in title_lower for word in TITLE_BLACKLIST):
+                excluded += 1
+                logger.debug(f"Excluded by title blacklist: {job.title}")
+                continue
+            filtered_jobs.append(job)
+
+        if excluded:
+            logger.info(f"Excluded {excluded} jobs by title blacklist (senior/staff/etc.)")
+        new_jobs = filtered_jobs
+
         if not new_jobs:
             logger.info("No new jobs to evaluate. Done.")
             return
 
-        # ── Phase 2: AI Filtering (concurrent) ──
-        logger.info(f"Starting AI evaluation for {len(new_jobs)} new jobs...")
-        evaluated_jobs = await ai_filter.evaluate_jobs(new_jobs)
+        # ── Phase 2: ML Scoring (instant, no API calls) ──
+        logger.info(f"Scoring {len(new_jobs)} new jobs with ML model...")
+        evaluated_jobs = scorer.score_jobs(new_jobs)
 
         # Persist AI scores
         for job in evaluated_jobs:

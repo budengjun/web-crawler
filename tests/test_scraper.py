@@ -34,7 +34,7 @@ class TestParseInterceptedData:
             }
         ]
 
-        jobs = engine._parse_intercepted_data("Acme Corp")
+        jobs = engine._parse_intercepted_data("Acme Corp", "https://api.lever.co")
         assert len(jobs) == 2
         assert jobs[0].title == "Senior ML Engineer"
         assert jobs[0].location == "Vancouver, BC"
@@ -62,7 +62,7 @@ class TestParseInterceptedData:
             }
         ]
 
-        jobs = engine._parse_intercepted_data("Acme")
+        jobs = engine._parse_intercepted_data("Acme", "https://boards-api.greenhouse.io")
         assert len(jobs) == 1
         assert jobs[0].title == "Data Scientist"
         assert jobs[0].location == "Toronto, ON"
@@ -72,7 +72,7 @@ class TestParseInterceptedData:
         """No intercepted data returns empty list."""
         engine = self._engine()
         engine.intercepted_data = []
-        assert engine._parse_intercepted_data("X") == []
+        assert engine._parse_intercepted_data("X", "https://example.com") == []
 
     def test_non_job_api_responses_ignored(self):
         """Intercepted data without recognizable job fields is skipped."""
@@ -83,7 +83,7 @@ class TestParseInterceptedData:
                 "data": {"page_views": 1234, "sessions": 56},
             }
         ]
-        jobs = engine._parse_intercepted_data("Example")
+        jobs = engine._parse_intercepted_data("Example", "https://api.example.com")
         assert len(jobs) == 0
 
     def test_mixed_valid_and_invalid_records(self):
@@ -102,7 +102,7 @@ class TestParseInterceptedData:
             }
         ]
 
-        jobs = engine._parse_intercepted_data("Example")
+        jobs = engine._parse_intercepted_data("Example", "https://api.example.com")
         assert len(jobs) == 1
         assert jobs[0].title == "Valid Job"
 
@@ -122,7 +122,7 @@ class TestParseInterceptedData:
             }
         ]
 
-        jobs = engine._parse_intercepted_data("Co")
+        jobs = engine._parse_intercepted_data("Co", "https://api.lever.co")
         assert len(jobs) == 1
         assert jobs[0].posted_date is not None
         assert isinstance(jobs[0].posted_date, datetime)
