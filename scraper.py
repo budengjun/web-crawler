@@ -1,13 +1,25 @@
 import asyncio
 import logging
+import random
 from typing import List, Dict, Any, Optional
 from playwright.async_api import async_playwright, Page, Response, Browser, BrowserContext
 from playwright_stealth import Stealth
 from models import Job
 from datetime import datetime, timezone
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from urllib.parse import urljoin, quote_plus
 
 logger = logging.getLogger(__name__)
+
+# ── Anti-detection: rotating User-Agent pool ──
+_USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+]
 
 # Common job-related keywords for generic scraping
 JOB_KEYWORDS = [
@@ -23,6 +35,9 @@ DESCRIPTION_SELECTORS = [
     "#job-description",
     "[data-automation-id='jobPostingDescription']",
     ".posting-page .section-wrapper",
+    ".description__text",               # LinkedIn
+    ".show-more-less-html__markup",      # LinkedIn
+    "#jobDescriptionText",              # Indeed
     ".content-intro",
     "#content",
     "article",
@@ -31,10 +46,63 @@ DESCRIPTION_SELECTORS = [
 
 
 class ScraperEngine:
-    def __init__(self, headless: bool = True, timeout: int = 30000):
+    def __init__(self, headless: bool = True, timeout: int = 30000, proxy: str = None):
         self.headless = headless
         self.timeout = timeout
+        self.proxy = proxy  # e.g. "http://user:pass@host:port"
         self.intercepted_data: List[Dict[str, Any]] = []
+
+    # ──────────────────────────────────────────────
+    # Anti-detection: human behavior simulation
+    # ──────────────────────────────────────────────
+
+    @staticmethod
+    async def _random_delay(min_s: float = 1.0, max_s: float = 3.5):
+        """Wait a random duration to mimic human reading/thinking time."""
+        await asyncio.sleep(random.uniform(min_s, max_s))
+
+    @staticmethod
+    async def _human_scroll(page: Page, scroll_count: int = 3):
+        """Scroll down in a natural, variable-speed pattern."""
+        for i in range(scroll_count):
+            # Variable scroll distance
+            distance = random.randint(400, 900)
+            await page.evaluate(f"window.scrollBy(0, {distance})")
+            await asyncio.sleep(random.uniform(0.8, 2.2))
+
+    @staticmethod
+    async def _random_mouse_move(page: Page):
+        """Simulate random mouse movement to avoid bot detection."""
+        try:
+            x = random.randint(100, 800)
+            y = random.randint(100, 500)
+            await page.mouse.move(x, y)
+            await asyncio.sleep(random.uniform(0.1, 0.4))
+        except Exception:
+            pass  # Mouse move is best-effort
+
+    @staticmethod
+    async def _is_blocked(page: Page) -> bool:
+        """Detect if LinkedIn/Indeed has blocked us (login wall, CAPTCHA, 403)."""
+        try:
+            url = page.url
+            # LinkedIn login redirect
+            if "linkedin.com/authwall" in url or "linkedin.com/checkpoint" in url:
+                logger.warning("⚠️  LinkedIn login wall detected. Rotating to next query.")
+                return True
+            # Check for blocked / CAPTCHA text
+            body_text = await page.inner_text("body")
+            blocked_signals = [
+                "Sign in to view", "Join now to see",
+                "Let's do a quick security check", "unusual activity",
+                "verify you're a real person",
+            ]
+            if any(sig.lower() in body_text.lower() for sig in blocked_signals):
+                logger.warning("⚠️  Anti-bot block detected on page. Skipping.")
+                return True
+        except Exception:
+            pass
+        return False
 
     # ──────────────────────────────────────────────
     # API Interception
@@ -56,7 +124,7 @@ class ScraperEngine:
             except Exception:
                 pass
 
-    def _parse_intercepted_data(self, company_name: str) -> List[Job]:
+    def _parse_intercepted_data(self, company_name: str, base_url: str) -> List[Job]:
         """
         Attempt to extract Job objects from intercepted API JSON payloads.
         Handles common structures: lists of objects with title/name + url/link fields,
@@ -130,12 +198,17 @@ class ScraperEngine:
                         break
 
                 if title:
+                    # Normalize link
+                    full_link = link or ""
+                    if full_link and not full_link.startswith("http"):
+                        full_link = urljoin(base_url, full_link)
+
                     jobs.append(Job(
                         title=title.strip(),
                         company=company_name,
                         location=location.strip() if location else "See listing",
                         description=description[:8000] if description else "",
-                        apply_link=link or "",
+                        apply_link=full_link,
                         posted_date=posted_date or now,
                     ))
 
@@ -150,18 +223,25 @@ class ScraperEngine:
         all_jobs: List[Job] = []
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=self.headless)
+            launch_opts = {"headless": self.headless}
+            if self.proxy:
+                launch_opts["proxy"] = {"server": self.proxy}
+                logger.info(f"Using proxy: {self.proxy[:30]}...")
+
+            browser = await p.chromium.launch(**launch_opts)
+
+            # Randomized browser fingerprint per session
+            ua = random.choice(_USER_AGENTS)
             context = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/122.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1920, "height": 1080},
+                user_agent=ua,
+                viewport={"width": random.choice([1366, 1440, 1536, 1920]), "height": random.choice([768, 900, 1024, 1080])},
                 device_scale_factor=2,
                 has_touch=False,
                 is_mobile=False,
+                locale="en-US",
+                timezone_id="America/Vancouver",
             )
+            logger.debug(f"Browser session UA: {ua[:60]}...")
 
             for target in targets:
                 jobs = await self._scrape_target(context, target)
@@ -203,31 +283,37 @@ class ScraperEngine:
         scraped_jobs: List[Job] = []
 
         try:
-            await page.goto(url, wait_until="networkidle", timeout=self.timeout)
-
-            # ── Phase 1: Try intercepted API data first ──
-            api_jobs = self._parse_intercepted_data(company_name)
-            if api_jobs:
-                logger.info(
-                    f"📡 Parsed {len(api_jobs)} jobs from intercepted API data for {company_name}"
-                )
-                scraped_jobs = api_jobs
+            # ── LinkedIn and Indeed use search-based scraping (skip API interception) ──
+            if platform_type == "linkedin":
+                scraped_jobs = await self._scrape_linkedin(page, company_name, target)
+            elif platform_type == "indeed":
+                scraped_jobs = await self._scrape_indeed(page, company_name, target)
             else:
-                # ── Phase 2: Fall back to DOM parsing ──
-                if platform_type == "workday":
-                    scraped_jobs = await self._scrape_workday(page, company_name, selectors)
-                elif platform_type in ("lever", "greenhouse"):
-                    scraped_jobs = await self._scrape_lever_greenhouse(page, company_name, selectors)
-                else:
-                    scraped_jobs = await self._scrape_custom(page, company_name, selectors)
+                await page.goto(url, wait_until="networkidle", timeout=self.timeout)
 
-            # ── Phase 3: Fetch real descriptions for jobs that lack them ──
-            for job in scraped_jobs:
-                if not job.description or job.description.startswith("Description") or job.description.startswith("Detail"):
-                    if job.apply_link and job.apply_link.startswith("http"):
-                        desc = await self._fetch_job_description(page, job.apply_link)
-                        if desc:
-                            job.description = desc
+                # ── Phase 1: Try intercepted API data first ──
+                api_jobs = self._parse_intercepted_data(company_name, url)
+                if api_jobs:
+                    logger.info(
+                        f"📡 Parsed {len(api_jobs)} jobs from intercepted API data for {company_name}"
+                    )
+                    scraped_jobs = api_jobs
+                else:
+                    # ── Phase 2: Fall back to DOM parsing ──
+                    if platform_type == "workday":
+                        scraped_jobs = await self._scrape_workday(page, company_name, selectors)
+                    elif platform_type in ("lever", "greenhouse"):
+                        scraped_jobs = await self._scrape_lever_greenhouse(page, company_name, selectors)
+                    else:
+                        scraped_jobs = await self._scrape_custom(page, company_name, selectors)
+
+                # ── Phase 3: Fetch real descriptions for jobs that lack them ──
+                for job in scraped_jobs:
+                    if not job.description or job.description.startswith("Description") or job.description.startswith("Detail"):
+                        if job.apply_link and job.apply_link.startswith("http"):
+                            desc = await self._fetch_job_description(page, job.apply_link)
+                            if desc:
+                                job.description = desc
 
         except Exception as e:
             logger.error(f"Failed to scrape {company_name}: {e}")
@@ -259,12 +345,7 @@ class ScraperEngine:
                 try:
                     title_el = el.locator(title_sel)
                     title = await title_el.inner_text()
-                    link = await title_el.get_attribute("href")
-                    full_link = (
-                        f"https://{page.url.split('/')[2]}{link}"
-                        if link and link.startswith("/")
-                        else link
-                    )
+                    full_link = urljoin(page.url, link) if link else page.url
 
                     location = "Check Listing"
                     loc_el = el.locator(location_sel)
@@ -314,7 +395,7 @@ class ScraperEngine:
                         company=company_name,
                         location=loc_text.strip(),
                         description="",
-                        apply_link=link or page.url,
+                        apply_link=urljoin(page.url, link) if link else page.url,
                         posted_date=datetime.now(timezone.utc),
                     ))
                 except Exception as e:
@@ -392,6 +473,208 @@ class ScraperEngine:
         except Exception as e:
             logger.error(f"Custom scraping error for {company_name}: {e}")
 
+        return jobs
+
+    # ──────────────────────────────────────────────
+    # LinkedIn & Indeed scrapers
+    # ──────────────────────────────────────────────
+
+    async def _scrape_linkedin(self, page: Page, company_name: str, target: Dict) -> List[Job]:
+        """
+        Scrape LinkedIn's public job search (no login required).
+        Iterates through search_queries to find intern/co-op roles.
+        """
+        search_queries = target.get("search_queries", ["Software Engineer Intern"])
+        location = target.get("location", "Vancouver, BC, Canada")
+        jobs: List[Job] = []
+        seen_links: set = set()
+
+        for query in search_queries:
+            encoded_query = query.replace(" ", "%20")
+            encoded_location = location.replace(" ", "%20").replace(",", "%2C")
+            search_url = (
+                f"https://www.linkedin.com/jobs/search/"
+                f"?keywords={encoded_query}"
+                f"&location={encoded_location}"
+                f"&f_TPR=r604800"   # Last 7 days (24h too narrow for Vancouver)
+                f"&sortBy=DD"      # Sort by date
+            )
+
+            logger.info(f"LinkedIn search: '{query}' in {location}")
+
+            try:
+                await page.goto(search_url, wait_until="domcontentloaded", timeout=self.timeout)
+                await self._random_delay(2.5, 4.5)  # Human-like wait after page load
+
+                # Check for anti-bot blocks
+                if await self._is_blocked(page):
+                    continue
+
+                # Simulate human browsing: mouse move + natural scroll
+                await self._random_mouse_move(page)
+                await self._human_scroll(page, scroll_count=random.randint(2, 4))
+
+                # Try multiple selector patterns (LinkedIn changes these frequently)
+                card_selectors = [
+                    ".base-card",
+                    ".job-search-card",
+                    ".jobs-search__results-list li",
+                    "[data-entity-urn]",
+                ]
+
+                cards = []
+                for sel in card_selectors:
+                    cards = await page.locator(sel).all()
+                    if cards:
+                        break
+
+                for card in cards:
+                    try:
+                        # Title
+                        title_el = card.locator("h3, .base-search-card__title, .job-search-card__title").first
+                        title = (await title_el.inner_text()).strip()
+
+                        # Link
+                        link_el = card.locator("a.base-card__full-link, a[data-tracking-control-name]").first
+                        link = await link_el.get_attribute("href") if await link_el.count() > 0 else None
+                        if not link:
+                            link_el = card.locator("a").first
+                            link = await link_el.get_attribute("href") if await link_el.count() > 0 else None
+
+                        if not link or link in seen_links:
+                            continue
+                        seen_links.add(link)
+
+                        # Company
+                        company = company_name
+                        company_el = card.locator("h4, .base-search-card__subtitle, .job-search-card__company-name")
+                        if await company_el.count() > 0:
+                            company = (await company_el.first.inner_text()).strip() or company_name
+
+                        # Location
+                        loc = location
+                        loc_el = card.locator(".job-search-card__location, .base-search-card__metadata span")
+                        if await loc_el.count() > 0:
+                            loc = (await loc_el.first.inner_text()).strip() or location
+
+                        full_link = urljoin(page.url, link) if link else page.url
+                        jobs.append(Job(
+                            title=title,
+                            company=company,
+                            location=loc,
+                            description=f"[LinkedIn] Search: {query}",
+                            apply_link=full_link.split("?")[0],  # Clean tracking params
+                            posted_date=datetime.now(timezone.utc),
+                        ))
+                    except Exception as e:
+                        logger.debug(f"Skipping LinkedIn card: {e}")
+                        continue
+
+                logger.info(f"  → Found {len(cards)} cards for query '{query}'")
+
+            except Exception as e:
+                logger.warning(f"LinkedIn search failed for '{query}': {e}")
+
+            # Anti-detection: random wait between searches (3-7 seconds)
+            await self._random_delay(3.0, 7.0)
+
+        logger.info(f"LinkedIn total: {len(jobs)} unique jobs across {len(search_queries)} queries")
+        return jobs
+
+    async def _scrape_indeed(self, page: Page, company_name: str, target: Dict) -> List[Job]:
+        """
+        Scrape Indeed Canada's job search.
+        Iterates through search_queries to find intern/co-op roles.
+        """
+        search_queries = target.get("search_queries", ["Software Intern"])
+        location = target.get("location", "Vancouver, BC")
+        jobs: List[Job] = []
+        seen_links: set = set()
+
+        for query in search_queries:
+            encoded_query = query.replace(" ", "+")
+            encoded_location = location.replace(" ", "+").replace(",", "%2C")
+            search_url = (
+                f"https://ca.indeed.com/jobs"
+                f"?q={encoded_query}"
+                f"&l={encoded_location}"
+                f"&fromage=7"      # Last 7 days (24h too narrow for Vancouver)
+                f"&sort=date"      # Sort by date
+            )
+
+            logger.info(f"Indeed search: '{query}' in {location}")
+
+            try:
+                await page.goto(search_url, wait_until="domcontentloaded", timeout=self.timeout)
+                await page.wait_for_timeout(3000)
+
+                # Indeed card selectors (they change frequently)
+                card_selectors = [
+                    ".job_seen_beacon",
+                    ".resultContent",
+                    ".jobsearch-ResultsList > li",
+                    "div.cardOutline",
+                    "td.resultContent",
+                ]
+
+                cards = []
+                for sel in card_selectors:
+                    cards = await page.locator(sel).all()
+                    if cards:
+                        break
+
+                for card in cards:
+                    try:
+                        # Title
+                        title_el = card.locator("h2.jobTitle a, h2 a, .jobTitle a, a[data-jk]").first
+                        title = (await title_el.inner_text()).strip()
+
+                        # Link
+                        link = urljoin(page.url, link) if link else None
+
+                        if not link or link in seen_links:
+                            continue
+                        seen_links.add(link)
+
+                        # Company
+                        company = company_name
+                        company_el = card.locator("span[data-testid='company-name'], .companyName, .company")
+                        if await company_el.count() > 0:
+                            company = (await company_el.first.inner_text()).strip() or company_name
+
+                        # Location
+                        loc = location
+                        loc_el = card.locator("div[data-testid='text-location'], .companyLocation, .location")
+                        if await loc_el.count() > 0:
+                            loc = (await loc_el.first.inner_text()).strip() or location
+
+                        # Snippet (Indeed shows a short summary)
+                        snippet = ""
+                        snippet_el = card.locator(".job-snippet, .underShelfFooter, li")
+                        if await snippet_el.count() > 0:
+                            snippet = (await snippet_el.first.inner_text()).strip()
+
+                        jobs.append(Job(
+                            title=title,
+                            company=company,
+                            location=loc,
+                            description=f"[Indeed] {snippet}" if snippet else f"[Indeed] Search: {query}",
+                            apply_link=link.split("&")[0] if "&" in link else link,  # Clean
+                            posted_date=datetime.now(timezone.utc),
+                        ))
+                    except Exception as e:
+                        logger.debug(f"Skipping Indeed card: {e}")
+                        continue
+
+                logger.info(f"  → Found {len(cards)} cards for query '{query}'")
+
+            except Exception as e:
+                logger.warning(f"Indeed search failed for '{query}': {e}")
+
+            # Anti-detection: wait between searches
+            await page.wait_for_timeout(5000)
+
+        logger.info(f"Indeed total: {len(jobs)} unique jobs across {len(search_queries)} queries")
         return jobs
 
     # ──────────────────────────────────────────────

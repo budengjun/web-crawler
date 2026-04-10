@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Crawler Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Base ─────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b0f1a;
+      --surface: #131829;
+      --surface2: #1a2035;
+      --border: #252d44;
+      --text: #e2e8f0;
+      --text-muted: #8492a6;
+      --accent: #6c63ff;
+      --accent-glow: rgba(108,99,255,.25);
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --orange: #fb923c;
+      --radius: 12px;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Header ───────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, #1a1040 0%, #0d1b3e 50%, #0a1628 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 32px 40px 28px;
+    }
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #a78bfa, #6c63ff, #38bdf8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header p { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+    /* ── Stats Row ────────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      padding: 24px 40px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .stat-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+    .stat-card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
+    .stat-card .value.accent { color: var(--accent); }
+    .stat-card .value.green  { color: var(--green); }
+    .stat-card .value.yellow { color: var(--yellow); }
+
+    /* ── Controls Bar ─────────────────────────── */
+    .controls {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+      padding: 0 40px 20px;
+    }
+    .search-box {
+      flex: 1; min-width: 240px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .search-box:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .search-box::placeholder { color: var(--text-muted); }
+    .filter-select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+      min-width: 160px;
+    }
+    .filter-select:focus { border-color: var(--accent); }
+    .filter-select option { background: var(--surface); color: var(--text); }
+
+    /* ── Table ────────────────────────────────── */
+    .table-container {
+      padding: 0 40px 40px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    thead th {
+      background: var(--surface2);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      padding: 14px 16px;
+      text-align: left;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      position: sticky; top: 0; z-index: 2;
+      transition: color .2s;
+    }
+    thead th:hover { color: var(--accent); }
+    thead th .sort-arrow { margin-left: 4px; font-size: 10px; }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(108,99,255,.06); }
+    td {
+      padding: 14px 16px;
+      font-size: 13.5px;
+      vertical-align: middle;
+    }
+
+    /* ── Score Badge ──────────────────────────── */
+    .score-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-weight: 600; font-size: 13px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      min-width: 52px;
+      justify-content: center;
+    }
+    .score-high   { background: rgba(52,211,153,.15); color: var(--green); }
+    .score-medium { background: rgba(251,191,36,.15); color: var(--yellow); }
+    .score-low    { background: rgba(248,113,113,.15); color: var(--red); }
+    .score-none   { background: rgba(132,146,166,.1);  color: var(--text-muted); }
+
+    /* ── Score Bar ────────────────────────────── */
+    .score-bar-container {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .score-bar {
+      width: 60px; height: 6px;
+      background: rgba(255,255,255,.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width .4s ease;
+    }
+
+    /* ── Links ────────────────────────────────── */
+    a.apply-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+      padding: 4px 10px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    a.apply-link:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Title Column ────────────────────────── */
+    .job-title {
+      font-weight: 600;
+      color: var(--text);
+      max-width: 320px;
+    }
+    .job-company { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+    .job-location { color: var(--text-muted); font-size: 12px; }
+
+    /* ── Reasoning Tooltip ────────────────────── */
+    .reasoning-cell {
+      max-width: 260px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ── Empty state ──────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state h3 { font-size: 18px; color: var(--text); margin-bottom: 8px; }
+
+    /* ── Company breakdown ────────────────────── */
+    .breakdown-section {
+      padding: 0 40px 32px;
+    }
+    .breakdown-title {
+      font-size: 14px; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+    .breakdown-bars {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 8px;
+    }
+    .breakdown-item {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+    }
+    .breakdown-item .name { flex: 1; font-size: 13px; font-weight: 500; }
+    .breakdown-item .count {
+      font-size: 13px; font-weight: 700; color: var(--accent);
+      min-width: 28px; text-align: right;
+    }
+    .breakdown-item .bar {
+      width: 80px; height: 5px;
+      background: rgba(255,255,255,.06);
+      border-radius: 3px; overflow: hidden;
+    }
+    .breakdown-item .bar-fill {
+      height: 100%; background: var(--accent);
+      border-radius: 3px; transition: width .5s ease;
+    }
+
+    /* ── Notified badge ────────────────────────── */
+    .notified-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+    .notified-yes { background: rgba(52,211,153,.15); color: var(--green); }
+    .notified-no  { background: rgba(132,146,166,.08); color: var(--text-muted); }
+
+    /* ── Responsive ───────────────────────────── */
+    @media (max-width: 768px) {
+      .header, .stats-row, .controls, .table-container, .breakdown-section {
+        padding-left: 16px; padding-right: 16px;
+      }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── Loading animation ────────────────────── */
+    .loading {
+      display: flex; align-items: center; justify-content: center;
+      padding: 80px 0; gap: 8px;
+    }
+    .loading .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.4s infinite ease-in-out both;
+    }
+    .loading .dot:nth-child(1) { animation-delay: -0.32s; }
+    .loading .dot:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes pulse {
+      0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ── Count badge ──────────────────────────── */
+    .count-badge {
+      display: inline-block;
+      background: var(--accent-glow);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 12px;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>🕷️ Job Crawler Dashboard</h1>
+    <p>Real-time visualization of scraped jobs from LinkedIn, Indeed, and company career pages</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row">
+    <div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  </div>
+
+  <!-- Company Breakdown -->
+  <div class="breakdown-section" id="breakdown-section"></div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <input type="text" class="search-box" id="search" placeholder="🔍  Search by title, company, or location..." />
+    <select class="filter-select" id="company-filter">
+      <option value="">All Companies</option>
+    </select>
+    <select class="filter-select" id="score-filter">
+      <option value="">All Scores</option>
+      <option value="high">High (80+)</option>
+      <option value="medium">Medium (50-79)</option>
+      <option value="low">Low (0-49)</option>
+      <option value="unscored">Not Scored</option>
+    </select>
+  </div>
+
+  <!-- Table -->
+  <div class="table-container">
+    <table id="jobs-table">
+      <thead>
+        <tr>
+          <th data-sort="title">Job Title <span class="sort-arrow"></span></th>
+          <th data-sort="location">Location <span class="sort-arrow"></span></th>
+          <th data-sort="match_score">Score <span class="sort-arrow"></span></th>
+          <th>AI Reasoning</th>
+          <th data-sort="first_seen">Found <span class="sort-arrow"></span></th>
+          <th>Status</th>
+          <th>Apply</th>
+        </tr>
+      </thead>
+      <tbody id="jobs-tbody">
+        <tr><td colspan="7"><div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+<script>
+// ── State ──────────────────────────────────────────
+let allJobs = [];
+let sortKey = "first_seen";
+let sortDir = -1; // -1 = desc
+
+// ── Fetch Data ─────────────────────────────────────
+async function init() {
+  const [statsRes, jobsRes] = await Promise.all([
+    fetch("/api/stats"),
+    fetch("/api/jobs"),
+  ]);
+  const stats = await statsRes.json();
+  allJobs = await jobsRes.json();
+
+  renderStats(stats);
+  renderBreakdown(stats.company_breakdown);
+  populateCompanyFilter();
+  renderTable();
+  attachListeners();
+}
+
+// ── Stats Cards ────────────────────────────────────
+function renderStats(s) {
+  document.getElementById("stats-row").innerHTML = `
+    <div class="stat-card">
+      <div class="label">Total Jobs</div>
+      <div class="value accent">${s.total}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">AI Evaluated</div>
+      <div class="value" style="color:#38bdf8">${s.scored}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Avg Score</div>
+      <div class="value yellow">${s.avg_score}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">High Match (80+)</div>
+      <div class="value green">${s.high_match}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Companies</div>
+      <div class="value" style="color:#c084fc">${s.companies}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Notified</div>
+      <div class="value" style="color:#fb923c">${s.notified}</div>
+    </div>
+  `;
+}
+
+// ── Company Breakdown Bars ─────────────────────────
+function renderBreakdown(items) {
+  if (!items || !items.length) return;
+  const max = items[0].count;
+  const section = document.getElementById("breakdown-section");
+  section.innerHTML = `
+    <div class="breakdown-title">Top Companies</div>
+    <div class="breakdown-bars">
+      ${items.map(it => `
+        <div class="breakdown-item">
+          <div class="name">${esc(it.name)}</div>
+          <div class="bar"><div class="bar-fill" style="width:${(it.count/max*100).toFixed(0)}%"></div></div>
+          <div class="count">${it.count}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+// ── Company Filter Dropdown ────────────────────────
+function populateCompanyFilter() {
+  const companies = [...new Set(allJobs.map(j => j.company))].sort();
+  const sel = document.getElementById("company-filter");
+  companies.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+}
+
+// ── Score helpers ──────────────────────────────────
+function scoreClass(s) {
+  if (s === null || s === undefined) return "score-none";
+  if (s >= 80) return "score-high";
+  if (s >= 50) return "score-medium";
+  return "score-low";
+}
+function scoreColor(s) {
+  if (s === null || s === undefined) return "var(--text-muted)";
+  if (s >= 80) return "var(--green)";
+  if (s >= 50) return "var(--yellow)";
+  return "var(--red)";
+}
+function timeAgo(dateStr) {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - d;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+function esc(str) {
+  if (!str) return "";
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ── Render Table ──────────────────────────────────
+function renderTable() {
+  const search = document.getElementById("search").value.toLowerCase();
+  const companyFilter = document.getElementById("company-filter").value;
+  const scoreFilter = document.getElementById("score-filter").value;
+
+  let filtered = allJobs.filter(j => {
+    if (search) {
+      const haystack = `${j.title} ${j.company} ${j.location}`.toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
+    if (companyFilter && j.company !== companyFilter) return false;
+    if (scoreFilter) {
+      const s = j.match_score;
+      if (scoreFilter === "high" && (s === null || s < 80)) return false;
+      if (scoreFilter === "medium" && (s === null || s < 50 || s >= 80)) return false;
+      if (scoreFilter === "low" && (s === null || s >= 50)) return false;
+      if (scoreFilter === "unscored" && s !== null) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  filtered.sort((a, b) => {
+    let va = a[sortKey], vb = b[sortKey];
+    if (va === null || va === undefined) va = sortDir === 1 ? Infinity : -Infinity;
+    if (vb === null || vb === undefined) vb = sortDir === 1 ? Infinity : -Infinity;
+    if (typeof va === "string") return sortDir * va.localeCompare(vb);
+    return sortDir * (va - vb);
+  });
+
+  const tbody = document.getElementById("jobs-tbody");
+
+  if (!filtered.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="7">
+        <div class="empty-state">
+          <div class="icon">🔍</div>
+          <h3>No jobs match your filters</h3>
+          <p>Try adjusting your search or filters</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(j => {
+    const s = j.match_score;
+    const scoreVal = s !== null && s !== undefined ? s : "—";
+    const barWidth = s !== null && s !== undefined ? s : 0;
+
+    return `<tr>
+      <td>
+        <div class="job-title">${esc(j.title)}</div>
+        <div class="job-company">${esc(j.company)}</div>
+      </td>
+      <td><div class="job-location">${esc(j.location)}</div></td>
+      <td>
+        <div class="score-bar-container">
+          <span class="score-badge ${scoreClass(s)}">${scoreVal}</span>
+          <div class="score-bar">
+            <div class="score-bar-fill" style="width:${barWidth}%;background:${scoreColor(s)}"></div>
+          </div>
+        </div>
+      </td>
+      <td><div class="reasoning-cell">${esc(j.match_reasoning) || '<span style="color:var(--text-muted)">—</span>'}</div></td>
+      <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${timeAgo(j.first_seen)}</td>
+      <td><span class="notified-badge ${j.notified ? 'notified-yes' : 'notified-no'}">${j.notified ? '✓ Sent' : 'Pending'}</span></td>
+      <td>${j.apply_link ? `<a class="apply-link" href="${esc(j.apply_link)}" target="_blank" rel="noopener">Apply →</a>` : '—'}</td>
+    </tr>`;
+  }).join("");
+
+  // Update count badge in header
+  const countEl = document.getElementById("filter-count");
+  if (countEl) countEl.textContent = filtered.length;
+}
+
+// ── Listeners ────────────────────────────────────
+function attachListeners() {
+  document.getElementById("search").addEventListener("input", renderTable);
+  document.getElementById("company-filter").addEventListener("change", renderTable);
+  document.getElementById("score-filter").addEventListener("change", renderTable);
+
+  // Column sorting
+  document.querySelectorAll("thead th[data-sort]").forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sort;
+      if (sortKey === key) { sortDir *= -1; }
+      else { sortKey = key; sortDir = key === "match_score" ? -1 : 1; }
+
+      // Update arrows
+      document.querySelectorAll("thead th .sort-arrow").forEach(s => s.textContent = "");
+      th.querySelector(".sort-arrow").textContent = sortDir === 1 ? " ▲" : " ▼";
+
+      renderTable();
+    });
+  });
+}
+
+// ── Boot ─────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

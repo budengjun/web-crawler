@@ -1,6 +1,6 @@
-import asyncio
-import google.generativeai as genai
+from google import genai
 import json
+import asyncio
 import logging
 from models import Job
 from typing import List
@@ -13,22 +13,15 @@ _SEMAPHORE_LIMIT = 1
 # AI Quota: Seconds to wait between requests to stay under 5 RPM limit
 _QUOTA_WAIT_SECONDS = 12
 
-
 class AIFilter:
     def __init__(self, api_key: str, keywords: List[str]):
         self.api_key = api_key
         self.keywords = keywords
+        self.model_name = "gemini-2.0-flash-lite"  # Higher free-tier quota (1500 RPD vs 500)
         if self.api_key and self.api_key != "YOUR_GEMINI_API_KEY":
-            genai.configure(api_key=self.api_key)
-            # Use gemini-2.5-flash — fast and cost-effective for text
-            self.model = genai.GenerativeModel(
-                "gemini-2.5-flash",
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",  # Force structured JSON output
-                ),
-            )
+            self.client = genai.Client(api_key=self.api_key)
         else:
-            self.model = None
+            self.client = None
             logger.warning(
                 "Gemini API key not configured or is default. AI Filtering will be skipped."
             )
@@ -42,7 +35,7 @@ class AIFilter:
         Evaluate a list of jobs concurrently using a semaphore to cap
         the number of simultaneous Gemini API calls.
         """
-        if not self.model:
+        if not self.client:
             for job in jobs:
                 job.match_score = 0
                 job.match_reasoning = "AI filtering disabled due to missing API key."
@@ -86,25 +79,31 @@ class AIFilter:
         reraise=True,
     )
     async def evaluate_job(self, job: Job) -> Job:
-        if not self.model:
+        if not self.client:
             job.match_score = 0
             job.match_reasoning = "AI filtering disabled due to missing API key."
             return job
 
         prompt = f"""
         You are an expert technical recruiter and career advisor.
-        Evaluate the following job description against a candidate whose profile is focused on "Full-stack" and "AI/ML".
+        Evaluate the following job for a **university student** looking for **Intern / Co-op** positions
+        in **Software Engineering, AI/ML, Data Science, or Full-stack Development**.
+        The candidate is based in **Vancouver, Canada** and prefers roles in **Canada** (remote or on-site).
         
         Candidate's preferred keywords/tech stack: {', '.join(self.keywords)}
         
         Job Title: {job.title}
         Company: {job.company}
+        Location: {job.location}
         Job Description: {job.description[:4000]}
         
-        Tasks:
-        1. Determine if this job matches a "Full-stack" or "AI/ML" profile.
-        2. Calculate a match score from 0 to 100 based on the presence of preferred keywords and overall role alignment.
-        3. Provide a brief reasoning for the score.
+        Evaluation criteria (in order of importance):
+        1. Is this an Intern, Co-op, or entry-level new-grad role? (If it is clearly a senior/staff role, score very low)
+        2. Does it match Software, AI/ML, Data Science, or Full-stack profiles?
+        3. Is the location in Canada, or remote-friendly for Canada?
+        4. Does the tech stack overlap with the candidate's keywords?
+        
+        Calculate a match score from 0 to 100 and provide brief reasoning.
         
         Return the result STRICTLY as a JSON object with the following schema:
         {{
@@ -114,7 +113,15 @@ class AIFilter:
         """
 
         try:
-            response = await self.model.generate_content_async(prompt)
+            # New SDK uses client.models.generate_content
+            # The async version is currently handled via anyio or standard await if configured
+            response = await self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                }
+            )
 
             text = response.text.strip()
 

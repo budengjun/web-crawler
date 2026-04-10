@@ -95,3 +95,43 @@ jobs:
 ```
 
 > **Note:** API keys are read from environment variables automatically when not set in `config.yaml`, so GitHub Actions secrets work out of the box.
+
+## Viewing and Managing Data
+
+All job data is stored in a local SQLite database named `jobs.db`. You can use the `sqlite3` command-line tool to query your results.
+
+### Quick Stats
+```bash
+# Total jobs count
+sqlite3 jobs.db "SELECT COUNT(*) FROM jobs;"
+
+# Count jobs by company
+sqlite3 jobs.db "SELECT company, COUNT(*) FROM jobs GROUP BY company ORDER BY 2 DESC;"
+```
+
+### View Results
+```bash
+# View top 15 most recent jobs and their AI scores
+sqlite3 jobs.db "SELECT title, company, match_score, apply_link FROM jobs ORDER BY rowid DESC LIMIT 15;"
+
+# Find high-scoring jobs (>80)
+sqlite3 jobs.db "SELECT title, company, match_score, apply_link FROM jobs WHERE match_score > 80 ORDER BY match_score DESC;"
+```
+
+### Reset Data
+If you want to re-scrape and re-evaluate everything from scratch, simply delete the database file:
+```bash
+rm jobs.db
+```
+
+### Web Dashboard
+For a richer visual experience, launch the built-in web dashboard:
+```bash
+python dashboard.py
+```
+Then open **http://localhost:5050** in your browser. The dashboard features:
+- **Stats overview** — total jobs, AI evaluation count, average score, high matches
+- **Company breakdown chart** — see which companies have the most listings
+- **Searchable & sortable table** — filter by company, score range, or keyword
+- **One-click apply** — direct links to job application pages
+- **Score visualization** — color-coded badges and progress bars

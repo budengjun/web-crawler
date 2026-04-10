@@ -7,6 +7,8 @@ from models import Job
 from ai_filter import AIFilter
 from datetime import datetime, timezone
 
+import ai_filter
+ai_filter._QUOTA_WAIT_SECONDS = 0
 
 def _make_job(**overrides) -> Job:
     defaults = dict(
@@ -28,11 +30,11 @@ class TestJSONParsing:
     async def test_clean_json_response(self):
         """Model returns clean JSON without fences."""
         ai = AIFilter(api_key="", keywords=["Python", "PyTorch"])
-        ai.model = MagicMock()
+        ai.client = MagicMock()
 
         mock_response = MagicMock()
         mock_response.text = '{"score": 85, "reasoning": "Good fit"}'
-        ai.model.generate_content_async = AsyncMock(return_value=mock_response)
+        ai.client.models.generate_content = AsyncMock(return_value=mock_response)
 
         job = _make_job()
         result = await ai.evaluate_job(job)
@@ -43,11 +45,11 @@ class TestJSONParsing:
     async def test_fenced_json_response(self):
         """Model returns JSON wrapped in ```json fences."""
         ai = AIFilter(api_key="", keywords=["Python"])
-        ai.model = MagicMock()
+        ai.client = MagicMock()
 
         mock_response = MagicMock()
         mock_response.text = '```json\n{"score": 72, "reasoning": "Partial match"}\n```'
-        ai.model.generate_content_async = AsyncMock(return_value=mock_response)
+        ai.client.models.generate_content = AsyncMock(return_value=mock_response)
 
         job = _make_job()
         result = await ai.evaluate_job(job)
@@ -57,11 +59,11 @@ class TestJSONParsing:
     async def test_plain_fenced_response(self):
         """Model returns JSON wrapped in plain ``` fences."""
         ai = AIFilter(api_key="", keywords=["Python"])
-        ai.model = MagicMock()
+        ai.client = MagicMock()
 
         mock_response = MagicMock()
         mock_response.text = '```\n{"score": 60, "reasoning": "Weak match"}\n```'
-        ai.model.generate_content_async = AsyncMock(return_value=mock_response)
+        ai.client.models.generate_content = AsyncMock(return_value=mock_response)
 
         job = _make_job()
         result = await ai.evaluate_job(job)
@@ -71,8 +73,8 @@ class TestJSONParsing:
     async def test_missing_api_key_returns_zero(self):
         """When no API key is set, score defaults to 0."""
         ai = AIFilter(api_key="", keywords=["Python"])
-        # model should be None
-        assert ai.model is None
+        # client should be None
+        assert ai.client is None
 
         job = _make_job()
         result = await ai.evaluate_job(job)
@@ -97,11 +99,11 @@ class TestConcurrentEvaluation:
     async def test_evaluate_jobs_concurrent(self):
         """Concurrent evaluation processes all jobs."""
         ai = AIFilter(api_key="", keywords=["Python"])
-        ai.model = MagicMock()
+        ai.client = MagicMock()
 
         mock_response = MagicMock()
         mock_response.text = '{"score": 80, "reasoning": "Match"}'
-        ai.model.generate_content_async = AsyncMock(return_value=mock_response)
+        ai.client.models.generate_content = AsyncMock(return_value=mock_response)
 
         jobs = [_make_job(apply_link=f"https://a.com/{i}") for i in range(5)]
         results = await ai.evaluate_jobs(jobs)
