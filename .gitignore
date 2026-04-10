@@ -50,3 +50,6 @@ config.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+# Training data
+train_data.csv
